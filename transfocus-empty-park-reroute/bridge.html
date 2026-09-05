@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Transfocus Empty Park Reroute Loader</title>
+</head>
+<body style="font-family:Arial,sans-serif;font-size:13px;padding:12px">
+Loading latest Empty Park Reroute…
+<script>
+(async () => {
+  const TYPE = "JAMIE_EMPTY_PARK_REROUTE_SOURCE_V1";
+
+  try {
+    const params = new URLSearchParams(location.search);
+    const target = params.get("origin") || "";
+
+    if (!/^https:\/\/[^/]*tmspanel\.com\.au$/i.test(target)) {
+      throw new Error("Invalid Transfocus origin.");
+    }
+
+    const raw =
+      "https://raw.githubusercontent.com/JamieGBot/onestop-tools/main/transfocus-empty-park-reroute/latest.txt?v=" +
+      Date.now();
+
+    const response = await fetch(raw, {
+      cache: "no-store",
+      credentials: "omit"
+    });
+
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+
+    const payload = (await response.text()).trim();
+
+    if (!payload || payload.length < 1000) {
+      throw new Error("Remote payload looked incomplete.");
+    }
+
+    const bytes =
+      Uint8Array.from(
+        atob(payload),
+        character => character.charCodeAt(0)
+      );
+
+    if (typeof DecompressionStream !== "function") {
+      throw new Error("DecompressionStream unavailable.");
+    }
+
+    const source =
+      await new Response(
+        new Blob([bytes])
+          .stream()
+          .pipeThrough(
+            new DecompressionStream("gzip")
+          )
+      ).text();
+
+    if (!source || source.length < 5000) {
+      throw new Error("Decoded source looked incomplete.");
+    }
+
+    if (!window.opener) {
+      throw new Error("Original Transfocus window is unavailable.");
+    }
+
+    window.opener.postMessage(
+      {
+        type: TYPE,
+        source
+      },
+      target
+    );
+
+    document.body.textContent = "Loaded. You can close this window.";
+    setTimeout(() => window.close(), 250);
+  } catch (error) {
+    console.error(error);
+
+    document.body.textContent =
+      "Loader failed: " +
+      (error && error.message ? error.message : error);
+
+    try {
+      const target =
+        new URLSearchParams(location.search).get("origin") || "*";
+
+      window.opener?.postMessage(
+        {
+          type: TYPE,
+          error:
+            error && error.message
+              ? error.message
+              : String(error)
+        },
+        target
+      );
+    } catch (_) {}
+  }
+})();
+</script>
+</body>
+</html>
