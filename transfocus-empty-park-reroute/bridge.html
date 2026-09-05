@@ -18,11 +18,15 @@ Loading latest Empty Park Reroute…
       throw new Error("Invalid Transfocus origin.");
     }
 
-    const raw =
-      "https://raw.githubusercontent.com/JamieGBot/onestop-tools/main/transfocus-empty-park-reroute/latest.txt?v=" +
-      Date.now();
+    /*
+     * Fetch from this GitHub Pages site itself instead of raw.githubusercontent.
+     * This avoids the cross-origin/raw response issue that was causing atob() to
+     * receive something other than the expected base64 payload.
+     */
+    const payloadUrl =
+      new URL("latest.txt?v=" + Date.now(), location.href).href;
 
-    const response = await fetch(raw, {
+    const response = await fetch(payloadUrl, {
       cache: "no-store",
       credentials: "omit"
     });
@@ -31,15 +35,37 @@ Loading latest Empty Park Reroute…
       throw new Error("HTTP " + response.status);
     }
 
-    const payload = (await response.text()).trim();
+    let payload = await response.text();
+
+    /* Remove BOM/whitespace and only keep legal base64 characters. */
+    payload = String(payload || "")
+      .replace(/^\uFEFF/, "")
+      .replace(/\s+/g, "")
+      .replace(/[^A-Za-z0-9+/=]/g, "");
 
     if (!payload || payload.length < 1000) {
       throw new Error("Remote payload looked incomplete.");
     }
 
+    /* Repair missing padding if a proxy strips it. */
+    const remainder = payload.length % 4;
+    if (remainder) {
+      payload += "=".repeat(4 - remainder);
+    }
+
+    let binary;
+    try {
+      binary = atob(payload);
+    } catch (error) {
+      throw new Error(
+        "Base64 decode failed (length " + payload.length + "): " +
+        (error && error.message ? error.message : error)
+      );
+    }
+
     const bytes =
       Uint8Array.from(
-        atob(payload),
+        binary,
         character => character.charCodeAt(0)
       );
 
