@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Jamie Master Loader</title>
+</head>
+<body style="font-family:Arial,sans-serif;font-size:13px;padding:12px">
+Loading latest Jamie Master…
+<script>
+(async () => {
+  const TYPE = "JAMIE_MASTER_SOURCE_V1";
+
+  try {
+    const params = new URLSearchParams(location.search);
+    const target = params.get("origin") || "";
+
+    const allowed =
+      /^https:\/\/(?:confr|aslfr)\.vbs\.1-stop\.biz$/i.test(target) ||
+      /^https:\/\/[^/]*tmspanel\.com\.au$/i.test(target);
+
+    if (!allowed) {
+      throw new Error("Invalid OneStop / Transfocus origin.");
+    }
+
+    const response = await fetch("./latest.gz?v=" + Date.now(), {
+      cache: "no-store",
+      credentials: "omit"
+    });
+
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let source = "";
+
+    if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+      if (typeof DecompressionStream !== "function") {
+        throw new Error("DecompressionStream unavailable.");
+      }
+
+      source = await new Response(
+        new Blob([bytes])
+          .stream()
+          .pipeThrough(new DecompressionStream("gzip"))
+      ).text();
+    } else {
+      source = new TextDecoder("utf-8").decode(bytes);
+    }
+
+    if (!source || source.length < 100000 || !source.includes("JAMIE — MASTER V171")) {
+      throw new Error("Decoded Master source looked incomplete or incorrect.");
+    }
+
+    if (!window.opener) {
+      throw new Error("Original OneStop / Transfocus window is unavailable.");
+    }
+
+    window.opener.postMessage(
+      {
+        type: TYPE,
+        source
+      },
+      target
+    );
+
+    document.body.textContent = "Loaded. You can close this window.";
+    setTimeout(() => window.close(), 250);
+  } catch (error) {
+    console.error(error);
+
+    document.body.textContent =
+      "Loader failed: " +
+      (error && error.message ? error.message : error);
+
+    try {
+      const target =
+        new URLSearchParams(location.search).get("origin") || "*";
+
+      window.opener?.postMessage(
+        {
+          type: TYPE,
+          error:
+            error && error.message
+              ? error.message
+              : String(error)
+        },
+        target
+      );
+    } catch (_) {}
+  }
+})();
+</script>
+</body>
+</html>
